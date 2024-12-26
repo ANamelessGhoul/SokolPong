@@ -1,1 +1,1 @@
-cmake -G "MinGW Makefiles" -B build -D CMAKE_BUILD_TYPE=Debug && cmake --build ./build
+cmake -G "MinGW Makefiles" -B build -D CMAKE_BUILD_TYPE=Release && cmake --build ./build
