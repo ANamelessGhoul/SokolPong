@@ -1,3 +1,6 @@
+// Based on glfw_glue.h included in https://github.com/floooh/sokol-samples
+
+
 #pragma once
 
 #ifndef SDL_GLUE_H

@@ -1,3 +1,6 @@
+// Based on glfw_glue.c included in https://github.com/floooh/sokol-samples
+
+
 #include "sokol_gfx.h"
 #include "sdl_glue.h"
 #include "assert.h"
