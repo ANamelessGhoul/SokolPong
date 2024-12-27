@@ -3,6 +3,8 @@
 #include "gen/quad_uv.glsl.h"
 #include <cassert>
 
+#include "logging.h"
+
 #define SOKOL_IMPL
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
@@ -110,6 +112,13 @@ void Renderer::LoadFont(const char *path, float fontSize)
     static unsigned char temp_bitmap[1024*1024];
     
     void* fontFile = SDL_LoadFile(path, NULL);
+    if (fontFile == NULL)
+    {
+        LOG(LOG_ERROR, "Could not open font file");
+        SDL_ClearError();
+        return; 
+    }
+
     int result = stbtt_BakeFontBitmap((unsigned char*)fontFile, 0, fontSize, temp_bitmap, 1024, 1024, 32, 96, fontChars);
     SDL_free(fontFile);
     assert(result > 0 && "Could not fit font into temporary bitmap!");
