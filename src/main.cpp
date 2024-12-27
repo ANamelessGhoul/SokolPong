@@ -199,8 +199,6 @@ int SDL_main( int argc, char* args[] )
     gAppState.startTicks = SDL_GetPerformanceCounter();
     gAppState.lastFrameTicks = gAppState.startTicks;
 
-    gGameState.scoreRight = 9;
-    
     renderer.LoadFont(RESOURCES_PATH "Kenney Pixel.ttf", 64.f);
 
     ResetGameElements();
