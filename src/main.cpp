@@ -15,6 +15,10 @@
 
 #include <ctime>
 
+#ifndef RESOURCES_PATH 
+#define RESOURCES_PATH "./resources/"
+#endif
+
 struct {
     Uint64 startTicks;
     Uint64 lastFrameTicks;
@@ -81,7 +85,6 @@ bool CheckCollisionRectangles(Vector2 position1, Vector2 size1, Vector2 position
 
 void DrawDigit(int digit, Renderer& renderer, Vector2 position, Vector2 size, Color color)
 {
-    // TODO: Get real font rendering
     assert(digit < 10);
 
     constexpr int FontWidth = 3;
@@ -196,6 +199,10 @@ int SDL_main( int argc, char* args[] )
     gAppState.startTicks = SDL_GetPerformanceCounter();
     gAppState.lastFrameTicks = gAppState.startTicks;
 
+    gGameState.scoreRight = 9;
+    
+    renderer.LoadFont(RESOURCES_PATH "Kenney Pixel.ttf", 64.f);
+
     ResetGameElements();
 
     bool quit = false;
@@ -307,6 +314,8 @@ int SDL_main( int argc, char* args[] )
                 gGameState.state = PONG_PLAYING;
                 ResetGameElements();
 
+                gGameState.scoreLeft = 0;
+                gGameState.scoreRight = 0;
             }
         }
 
@@ -343,15 +352,27 @@ int SDL_main( int argc, char* args[] )
                 color.A = 0.25f + (sin(GetTime() * 5) + 1.f) * 0.25f;
                 if (gGameState.scoreLeft >= 10)
                 {
-                    renderer.DrawRectangle({-gGameParams.gameSize.X * 0.5f, -gGameParams.gameSize.Y * 0.5f}, {gGameParams.gameSize.X * 0.5f, gGameParams.gameSize.Y}, color);
+                    renderer.DrawRectangle({-gGameParams.gameSize.X * 0.5f, -gGameParams.gameSize.Y * 0.5f}, {gGameParams.gameSize.X * 0.1f, gGameParams.gameSize.Y}, color);
                 }
                 else if (gGameState.scoreRight >= 10)
                 {
-                    renderer.DrawRectangle({0, -gGameParams.gameSize.Y * 0.5f}, {gGameParams.gameSize.X * 0.5f, gGameParams.gameSize.Y}, color);
+                    renderer.DrawRectangle({gGameParams.gameSize.X * 0.4f, -gGameParams.gameSize.Y * 0.5f}, {gGameParams.gameSize.X * 0.1f, gGameParams.gameSize.Y}, color);
                 }
             }
 
         renderer.EndCamera();
+
+        renderer.BeginUI();
+            if (gGameState.state == PONG_WAITING)
+            {
+                renderer.DrawText({sdl_width() * 0.5f, sdl_height() * 0.7f}, "Press SPACE to begin", gGameParams.lineColor, FontAlignment::Center);
+            }
+            else if (gGameState.state == PONG_END)
+            {
+                renderer.DrawText({sdl_width() * 0.5f, sdl_height() * 0.5f}, "GAME OVER!", gGameParams.lineColor, FontAlignment::Center);
+                renderer.DrawText({sdl_width() * 0.5f, sdl_height() * 0.5f + 48.f}, "Press SPACE to restart", gGameParams.lineColor, FontAlignment::Center);
+            }
+        renderer.EndUI();
 
         renderer.EndDrawing();
     }

@@ -1,11 +1,23 @@
 #include "renderer.hpp"
 #include "sdl_glue.h"
-#include "gen/quad.glsl.h"
+#include "gen/quad_uv.glsl.h"
 #include <cassert>
+
 #define SOKOL_IMPL
 #define SOKOL_GLCORE
 #include "sokol_gfx.h"
 #include "sokol_log.h"
+
+
+#ifdef _DEBUG
+    #define STB_IMAGE_WRITE_IMPLEMENTATION
+    #include "stb_image_write.h"
+#endif
+
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "stb_rect_pack.h"
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
 
 void Renderer::Initialize()
 {
@@ -54,11 +66,13 @@ void Renderer::Initialize()
 
     // setup pipeline
 	sg_pipeline_desc pipeline_desc = {
-		.shader = sg_make_shader(quad_shader_desc(sg_query_backend())),
+		.shader = sg_make_shader(quad_uv_shader_desc(sg_query_backend())),
 		.layout = {
 			.attrs = {
-				[ATTR_quad_position0] = { .format = sg_vertex_format::SG_VERTEXFORMAT_FLOAT3 },
-				[ATTR_quad_color0] = { .format = sg_vertex_format::SG_VERTEXFORMAT_FLOAT4 },
+				[ATTR_quad_uv_position] = { .format = sg_vertex_format::SG_VERTEXFORMAT_FLOAT3 },
+				[ATTR_quad_uv_color0] = { .format = sg_vertex_format::SG_VERTEXFORMAT_FLOAT4 },
+				[ATTR_quad_uv_bytes0] = { .format = sg_vertex_format::SG_VERTEXFORMAT_BYTE4N },
+				[ATTR_quad_uv_texcoord0] = { .format = sg_vertex_format::SG_VERTEXFORMAT_FLOAT2 },
 			},
 		},
         .depth = {
@@ -68,6 +82,11 @@ void Renderer::Initialize()
 		.index_type = sg_index_type::SG_INDEXTYPE_UINT16,
         // .cull_mode = SG_CULLMODE_BACK,
 	};
+
+    sg_sampler_desc sampler_desc = {0};
+	bind.samplers[SMP_texture0_smp] = sg_make_sampler(sampler_desc);
+
+
 	sg_blend_state blend_state = {
 		.enabled = true,
 		.src_factor_rgb = sg_blend_factor::SG_BLENDFACTOR_SRC_ALPHA,
@@ -84,6 +103,41 @@ void Renderer::Initialize()
 void Renderer::Shutdown()
 {
     sg_shutdown();
+}
+
+void Renderer::LoadFont(const char *path, float fontSize)
+{
+    static unsigned char temp_bitmap[1024*1024];
+    
+    void* fontFile = SDL_LoadFile(path, NULL);
+    int result = stbtt_BakeFontBitmap((unsigned char*)fontFile, 0, fontSize, temp_bitmap, 1024, 1024, 32, 96, fontChars);
+    SDL_free(fontFile);
+    assert(result > 0 && "Could not fit font into temporary bitmap!");
+
+#ifdef _DEBUG
+    stbi_write_png("font.png", 1024, 1024, 1, temp_bitmap, 0);
+#endif
+
+    sg_image_desc font_image_desc {
+        .type = SG_IMAGETYPE_2D,
+        .width = 1024,
+        .height = 1024,
+        .pixel_format = SG_PIXELFORMAT_R8,
+        .data = { .subimage = {{{.ptr = temp_bitmap, .size = 1024 * 1024}}}}
+    };
+
+    sg_image image = sg_make_image(font_image_desc);
+    if (image.id == SG_INVALID_ID)
+    {
+        // TODO: Soft error
+        assert("Could not load image data");
+        return;
+    }
+
+    bind.images[IMG__texture0] = image;
+
+    hasFont = true;
+
 }
 
 void Renderer::BeginDrawing()
@@ -121,12 +175,24 @@ void Renderer::EndCamera()
     view = HMM_M4D(1.0f);
 }
 
+void Renderer::BeginUI()
+{
+    projection = HMM_Orthographic_RH_NO(0, sdl_width(), sdl_height(), 0, -100.f, 100.f);
+    view = HMM_M4D(1.0f);
+}
+
+void Renderer::EndUI()
+{
+    projection = HMM_Orthographic_RH_NO(-sdl_width() / 2.f, sdl_width() / 2.0f, -sdl_height() / 2.f, sdl_height() / 2.0f, -100.f, 100.f);
+    view = HMM_M4D(1.0f);
+}
+
 void Renderer::SetClearColor(Color color)
 {
     pass_action.colors->clear_value = {color.R, color.G, color.B, color.A};
 }
 
-void Renderer::DrawRectangle(Vector2 position, Vector2 size, Color color, float depth/* = 0*/)
+void Renderer::DrawRectangle(Vector2 position, Vector2 size, Color color, uint8_t texture /* = UINT8_MAX */, Vector4 uv /* = {0, 0, 1, 1}  */, float depth /* = 0 */)
 {
     assert(draw_frame.count != MaxQuads && "Ran out of space for more quads");
 
@@ -138,9 +204,78 @@ void Renderer::DrawRectangle(Vector2 position, Vector2 size, Color color, float 
     Vector3 top_right    = HMM_MulM4V4(mvp, {position.X + size.X, position.Y, depth, 1.f}).XYZ;
 
     draw_frame.quads[draw_frame.count++] = {{
-        {top_left    , color},
-        {bottom_left , color},
-        {bottom_right, color},
-        {top_right   , color},
+        {top_left    , color, texture, {}, {uv[0], uv[1]}},
+        {bottom_left , color, texture, {}, {uv[0], uv[3]}},
+        {bottom_right, color, texture, {}, {uv[2], uv[3]}},
+        {top_right   , color, texture, {}, {uv[2], uv[1]}},
     }};
+}
+
+#ifdef DrawText
+#undef DrawText
+#endif
+void Renderer::DrawText(Vector2 position, const char *text, Color color, FontAlignment horizontalAlignment)
+{
+    assert(hasFont && "You can't draw text before loading a font!");
+
+    // Make sure the quads are pixel aligned
+    position = {roundf(position.X), roundf(position.Y)};
+
+    float textWidth = MeasureText(text);
+
+    float advance = 0.f;
+
+    for (int i = 0; text[i] != '\0'; i++)
+    {
+        char next = text[i];
+        FontChar fontChar =  fontChars[next - 32];
+
+        
+        Vector4 uv;
+        uv[0] = fontChar.x0 / 1024.f;
+        uv[1] = fontChar.y0 / 1024.f;
+        uv[2] = fontChar.x1 / 1024.f;
+        uv[3] = fontChar.y1 / 1024.f;
+
+        Vector2 size = {fontChar.x1 - fontChar.x0, fontChar.y1 - fontChar.y0};
+
+        Vector2 currentPosition = position;
+        currentPosition += Vector2{advance + fontChar.xoff, fontChar.yoff};
+
+        switch (horizontalAlignment)
+        {
+        case FontAlignment::Left:
+            break;
+        case FontAlignment::Center:
+            currentPosition.X -= textWidth * 0.5f;
+            break;
+        case FontAlignment::Right:
+            currentPosition.X -= textWidth;
+            break;
+        default:
+            assert(true && "Invalid text alignment value");
+            break;
+        }
+
+        advance += fontChar.xadvance;
+
+        DrawRectangle(currentPosition, size, color, 0, uv);
+    }
+    
+}
+
+float Renderer::MeasureText(const char *text)
+{
+    assert(hasFont && "You can't measure text before loading a font!");
+
+    float advance = 0.f;
+
+    for (int i = 0; text[i] != '\0'; i++)
+    {
+        char next = text[i];
+        FontChar fontChar =  fontChars[next - 32];
+        advance += fontChar.xadvance;
+    }
+
+    return advance;
 }

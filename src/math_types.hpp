@@ -8,6 +8,7 @@
 
 typedef HMM_Vec2 Vector2;
 typedef HMM_Vec3 Vector3;
+typedef HMM_Vec4 Vector4;
 typedef HMM_Vec4 Color;
 typedef HMM_Mat4 Matrix;
 
@@ -29,6 +30,9 @@ inline constexpr Color ColorFromHex(uint32_t hex)
 
 namespace Colors
 {
+    constexpr Color White   = {1.f, 1.f, 1.f, 1.f};
+    constexpr Color Black   = {0.f, 0.f, 0.f, 1.f};
+    constexpr Color Clear   = {0.f, 0.f, 0.f, 0.f};
     constexpr Color Red     = {1.f, 0.f, 0.f, 1.f};
     constexpr Color Green   = {0.f, 1.f, 0.f, 1.f};
     constexpr Color Blue    = {0.f, 0.f, 1.f, 1.f};
